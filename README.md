@@ -30,4 +30,4 @@ jenkins-master ansible_host=192.168.205.220
 
 Para ejecutar el playbook
 
-`ansible-playbook _roles.yaml -vv`
+`ansible-playbook jenkins_role.yaml -vv`
