@@ -1,0 +1,45 @@
+﻿---
+- name: Comprobar que las dependencias estan instaladas
+  package:
+    name:
+      - curl
+      - initscripts
+      - "{{ 'libselinux-python' if ansible_python['version']['major'] < 3 else 'python3-libselinux' }}"
+    state: present
+
+- name: Comprobar que el repositorio de Jenkins existe
+  get_url:
+    url: "{{ jenkins_repo_url }}"
+    dest: /etc/yum.repos.d/jenkins.repo
+  when: jenkins_repo_url | default(false)
+
+- name: Agregar la llave GPG del repo de Jenkins
+  rpm_key:
+    state: present
+    key: "{{ jenkins_repo_key_url }}"
+  when: jenkins_repo_url | default(false)
+
+- name: Descargar version especifica de Jenkins
+  get_url:
+    url: "{{ jenkins_pkg_url }}/jenkins-{{ jenkins_version }}-1.1.noarch.rpm"
+    dest: "/tmp/jenkins-{{ jenkins_version }}-1.1.noarch.rpm"
+  when: jenkins_version is defined
+
+- name: Comprobar si se ha descargado la version de Jenkins elegida
+  stat:
+    path: "/tmp/jenkins-{{ jenkins_version }}-1.1.noarch.rpm"
+  register: specific_version
+  when: jenkins_version is defined
+
+- name: Instalar la version de Jenkins elegida
+  package:
+    name: "/tmp/jenkins-{{ jenkins_version }}-1.1.noarch.rpm"
+    state: present
+  when: jenkins_version is defined and specific_version.stat.exists
+  notify: configure default users
+
+- name: Comprobar si se ha instaldo Jenkins
+  package:
+    name: jenkins
+    state: "{{ jenkins_package_state }}"
+  notify: configure default users

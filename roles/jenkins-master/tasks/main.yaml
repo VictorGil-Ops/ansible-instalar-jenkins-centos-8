@@ -1,0 +1,64 @@
+﻿---
+# Variable setup
+- name: Incluir variables específicas del sistema operativo
+  include_vars: "{{ ansible_os_family }}.yaml"
+
+- name: Definir jenkins_repo_url
+  set_fact:
+    jenkins_repo_url: "{{ __jenkins_repo_url }}"
+  when: jenkins_repo_url is not defined
+
+- name: Definir jenkins_repo_key_url
+  set_fact:
+    jenkins_repo_key_url: "{{ __jenkins_repo_key_url }}"
+  when: jenkins_repo_key_url is not defined
+
+- name: Definir jenkins_pkg_url
+  set_fact:
+    jenkins_pkg_url: "{{ __jenkins_pkg_url }}"
+  when: jenkins_pkg_url is not defined
+
+# Tareas setup/install
+- include_tasks: setup-Centos8.yaml
+  when: ansible_os_family == 'RedHat'
+
+# Configuración inicial de Jenkins
+- include_tasks: settings.yaml
+
+# Asegurarse que Jenkins arranca al inicio
+- name: Comprobar que Jenkins esta levantado y arranca al inicio
+  service: name=jenkins state=started enabled=yes
+
+- name: Esperar a que Jenkins arranque y se prepare
+  uri:
+    url: "http://{{ jenkins_hostname }}:{{ jenkins_http_port }}{{ jenkins_url_prefix }}/cli/"
+    method: GET
+    return_content: "yes"
+    timeout: 5
+    body_format: raw
+    follow_redirects: "no"
+    status_code: 200,403
+  register: result
+  until: (result.status == 403 or result.status == 200) and (result.content.find("Please wait while") == -1)
+  retries: "{{ jenkins_connection_retries }}"
+  delay: "{{ jenkins_connection_delay }}"
+  changed_when: false
+  check_mode: false
+
+- name: Recueprando jenkins-cli desde el servidor
+  get_url:
+    url: "http://{{ jenkins_hostname }}:{{ jenkins_http_port }}{{ jenkins_url_prefix }}/jnlpJars/jenkins-cli.jar"
+    dest: "{{ jenkins_jar_location }}"
+  register: jarfile_get
+  until: "'OK' in jarfile_get.msg or '304' in jarfile_get.msg or 'file already exists' in jarfile_get.msg"
+  retries: 5
+  delay: 10
+  check_mode: false
+
+- name: Elminar los scripts de seguridad de Jenkins en su primer arranque
+  file:
+    path: "{{ jenkins_home }}/init.groovy.d/basic-security.groovy"
+    state: absent
+
+# Update de Jenkins e instalar los plugins configurados
+- include_tasks: plugins.yaml
